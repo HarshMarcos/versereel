@@ -1,0 +1,146 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#7873f5"><link rel="manifest" href="manifest.json"><link rel="icon" href="icon-192.png"><title>VerseReel</title>
+<style>
+:root{--bg:#0d0b1e;--pn:#16132b;--ln:#2c2850;--tx:#f4f2ff;--dm:#9a96c4;--ac:#ff6ec4;--ac2:#7873f5}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,"Segoe UI",sans-serif;overscroll-behavior:none}
+#app{display:flex;flex-direction:column;height:100%;padding-top:env(safe-area-inset-top)}
+header{display:flex;align-items:center;gap:8px;padding:8px 12px}header h1{font:italic 800 20px Georgia,serif;margin:0;flex:1}header h1 b{background:linear-gradient(90deg,var(--ac),var(--ac2));-webkit-background-clip:text;background-clip:text;color:transparent}
+#body{flex:1;min-height:0;display:flex;flex-direction:column}#stage{flex:none;height:42vh;display:flex;justify-content:center;align-items:center;background:#000;position:relative}canvas{height:100%;max-width:100%;aspect-ratio:9/16}
+#tap{position:absolute;left:10px;right:10px;bottom:10px;padding:16px;font-size:18px;display:none;z-index:2}
+#bar{display:flex;align-items:center;gap:8px;padding:6px 12px}#bar input{flex:1}#tm{font-size:12px;color:var(--dm);width:78px;text-align:right}
+#panel{flex:1;overflow-y:auto;padding:10px 12px 14px;background:var(--pn);border-top:1px solid var(--ln)}
+nav{display:flex;background:var(--pn);border-top:1px solid var(--ln);padding-bottom:env(safe-area-inset-bottom)}nav button{flex:1;border:0;background:none;color:var(--dm);padding:11px 2px;font-size:12px}nav button.on{color:var(--ac);font-weight:700}
+button,select,input,textarea{font:inherit;color:var(--tx)}.b{background:#241f45;border:1px solid var(--ln);border-radius:10px;padding:9px 13px;cursor:pointer}.b.p{background:linear-gradient(90deg,var(--ac),var(--ac2));border:0;font-weight:700}.b.on{border-color:var(--ac);color:var(--ac)}
+select,input[type=text],textarea{width:100%;background:#0f0d22;border:1px solid var(--ln);border-radius:10px;padding:9px}textarea{font-size:15px;line-height:1.5}input[type=range]{accent-color:#ff6ec4;width:100%}
+.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}.card{border-radius:12px;padding:12px;min-height:88px;text-align:left;border:2px solid transparent;cursor:pointer;color:#fff}.card.on{border-color:#fff}.card b{display:block}.card small{opacity:.85}.card i{font-size:11px;opacity:.8;font-style:normal}
+.r{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}label.l{font-size:12px;color:var(--dm);display:block;margin:8px 0 3px}h3{margin:10px 0 4px;font-size:14px}.tip{font-size:12px;color:var(--dm)}
+.ln{display:grid;grid-template-columns:50px 1fr auto auto;gap:6px;align-items:center;padding:4px 0;border-bottom:1px solid var(--ln);font-size:13px}.ln.cur{color:var(--ac)}.ln .b{padding:3px 9px}
+#toast{position:fixed;left:50%;top:60px;transform:translateX(-50%);background:#000d;border:1px solid var(--ac);padding:8px 14px;border-radius:10px;display:none;z-index:9}
+@media(min-width:900px){#body{flex-direction:row}#stage{height:100%;width:min(46vw,calc((100vh - 60px)*9/16));flex:none}#right{flex:1;display:flex;flex-direction:column;min-width:0}}
+@media(max-width:899px){#right{flex:1;min-height:0;display:flex;flex-direction:column}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style></head><body><div id="app">
+<header><h1>Verse<b>Reel</b></h1><button class="b" id="inst" hidden>Install</button><button class="b p" id="exp">Export</button></header>
+<div id="body"><div id="stage"><canvas id="cv" width="720" height="1280"></canvas><button class="b p" id="tap">TAP when the next line starts</button></div>
+<div id="right"><div id="bar"><button class="b" id="play">Play</button><input type="range" id="seek" min="0" max="1000" value="0" aria-label="Seek"><span id="tm">0:00</span></div><div id="panel"></div>
+<nav id="nav"><button data-t="mood" class="on">Mood</button><button data-t="song">Song</button><button data-t="lyr">Lyrics</button><button data-t="style">Style</button><button data-t="exp">Export</button></nav></div></div></div><div id="toast"></div>
+<script>
+const $=s=>document.querySelector(s),cv=$('#cv'),x=cv.getContext('2d');
+/* mood templates (research: typography should echo the emotion; calm backgrounds keep lyrics readable) */
+const TPL=[
+{id:'heart',n:'Heartbreak',m:'Sad',d:'Rain, soft blur-in',c:['#0b1630','#1d2f5e','#e8f0ff','#8ab4ff'],bg:'rain',f:'serif',cs:'lower',an:'blur',dim:.3,pu:.2,fl:'cool',grain:1,glow:0,sm:'Streetlights blur against the glass\nI keep your name inside my chest\nEvery quiet hour feels longer now\nAnd I am learning how to rest'},
+{id:'mid',n:'Midnight diary',m:'Sad',d:'Stars, typewriter',c:['#05050f','#141a3a','#f2f2ff','#9aa8ff'],bg:'stars',f:'mono',cs:'lower',an:'type',dim:.2,pu:0,fl:'none',grain:1,glow:0,sm:'3 am and the room is blue\nI wrote this down for nobody\nIf you read it, you were here too'},
+{id:'party',n:'Party anthem',m:'Happy',d:'Neon, bounce',c:['#2b0a5e','#ff2d95','#ffffff','#fff200'],bg:'neon',f:'impact',cs:'upper',an:'bounce',dim:.15,pu:1,fl:'vivid',grain:0,glow:1,sm:'Hands up, the night is ours\nTurn it louder, light the stars\nNobody is going home\nWe are dancing on our own'},
+{id:'summer',n:'Summer vibes',m:'Happy',d:'Sunset, slide',c:['#ff7e5f','#feb47b','#ffffff','#2b1a4a'],bg:'sunset',f:'sans',cs:'none',an:'slide',dim:.1,pu:.5,fl:'warm',grain:0,glow:0,sm:'Windows down, the sun is low\nSalt in the air and nowhere to go\nSing it again, we know the words\nBest days of the year, they are ours'},
+{id:'love',n:'Love story',m:'Romantic',d:'Bokeh, script',c:['#3a0f2e','#a8326e','#fff0f6','#ffb3d1'],bg:'bokeh',f:'script',cs:'none',an:'rise',dim:.2,pu:.3,fl:'warm',grain:0,glow:1,sm:'You are the softest part of my day\nI would find you in any crowd\nHold my hand and stay a while\nLet the world be slow and loud'},
+{id:'drive',n:'Night drive',m:'Chill',d:'Synth sunset, lo-fi',c:['#12002b','#ff5e8a','#ffe9f3','#ffd166'],bg:'sunset',f:'sans',cs:'lower',an:'rise',dim:.15,pu:.4,fl:'cool',grain:1,glow:1,sm:'Empty road and the radio low\nCity lights where the wild things glow\nDrive me somewhere I have not been\nWe can leave before the morning begins'},
+{id:'hype',n:'Hype / gym',m:'Hype',d:'Glitch, shake',c:['#120000','#7a0b0b','#ffffff','#ff3b3b'],bg:'grain',f:'impact',cs:'upper',an:'glitch',dim:.25,pu:1,fl:'bw',grain:1,glow:0,sm:'One more rep, one more round\nNobody is taking my crown\nPain is only a passing guest\nI am built to pass the test'},
+{id:'retro',n:'Nostalgia',m:'Retro',d:'Film grain, typewriter',c:['#3b2a1a','#8a6a45','#fff4de','#ffcf70'],bg:'grain',f:'mono',cs:'none',an:'type',dim:.2,pu:0,fl:'warm',grain:1,glow:0,sm:'Polaroids on the bedroom wall\nSummers I never wanted to end\nPlay me that old song once more\nAnd take me back again'},
+{id:'dream',n:'Dreamy',m:'Soft',d:'Pastel, floating',c:['#c3b1ff','#ffc2e2','#ffffff','#7a5cff'],bg:'pastel',f:'script',cs:'none',an:'blur',dim:.05,pu:.2,fl:'fade',grain:0,glow:1,sm:'Float with me above the clouds\nWhere nothing hurts and nothing weighs\nClose your eyes and let it go\nWe will find the way'},
+{id:'dark',n:'Dark moody',m:'Dark',d:'Fog, gothic serif',c:['#050505','#2a0a12','#f1e6e6','#ff4d5e'],bg:'fog',f:'gothic',cs:'none',an:'rise',dim:.3,pu:.3,fl:'bw',grain:1,glow:0,sm:'Shadows know my name by heart\nI keep the candle low\nSome stories end before they start\nAnd some we never let go'}];
+const FONT={serif:s=>`italic 600 ${s}px Georgia,serif`,impact:s=>`900 ${s}px Impact,"Arial Black",sans-serif`,mono:s=>`700 ${s}px "Courier New",monospace`,script:s=>`400 ${s*1.1}px "Brush Script MT","Segoe Script",cursive`,sans:s=>`800 ${s}px "Trebuchet MS","Segoe UI",sans-serif`,gothic:s=>`italic 700 ${s}px "Times New Roman",serif`};
+const FIL={none:'none',cool:'hue-rotate(-12deg) saturate(1.15)',vivid:'saturate(1.5) contrast(1.1)',warm:'sepia(.3) saturate(1.25)',bw:'grayscale(1) contrast(1.2)',fade:'contrast(.85) brightness(1.1) saturate(.8)'};
+let S={tpl:'heart',lyr:'',times:[],len:30,start:0,bpm:90,size:64,pos:.5,karaoke:1,ctx:1,credit:'',media:[],swap:4,blur:0,mute:0,res:720,guide:1,fnt:'',an:'',bg:'',dim:null};
+try{Object.assign(S,JSON.parse(localStorage.vr||'{}'),{media:[]})}catch(e){}
+let tab='mood',playing=false,t0=0,tNow=0,ac,master,rd,au=null,adur=0,mr=null,lastBlob=null,exporting=false,syncing=false,sidx=0,taps=[];
+const save=()=>{try{const{media,...r}=S;localStorage.vr=JSON.stringify(r)}catch(e){}};
+const toast=m=>{const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',2600)};
+const T=()=>TPL.find(t=>t.id==S.tpl),clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const lines=()=>{const L=S.lyr.split('\n').map(s=>s.trim()).filter(Boolean);return L.map((text,i)=>({text,t:S.times[i]!=null?S.times[i]:+(i*S.len*.96/L.length).toFixed(2)}))};
+const tEnd=(L,i)=>L[i+1]?L[i+1].t:Math.min(S.len,L[i].t+4);
+const rnd=(i,k=0)=>{const v=Math.sin(i*127.1+k*311.7)*43758.5453;return v-Math.floor(v)};
+/* ---- procedural backgrounds ---- */
+function bgDraw(t,W,H,c1,c2,type){const g=x.createLinearGradient(0,0,0,H);g.addColorStop(0,c1);g.addColorStop(1,c2);x.fillStyle=g;x.fillRect(0,0,W,H);
+ if(type=='rain')for(let i=0;i<110;i++){const sx=rnd(i)*W,sp=600+rnd(i,1)*500,y=((t*sp+rnd(i,2)*H*2)%(H+120))-60;x.strokeStyle=`rgba(190,210,255,${.12+rnd(i,3)*.25})`;x.lineWidth=1.5;x.beginPath();x.moveTo(sx,y);x.lineTo(sx-8,y+40+rnd(i,4)*30);x.stroke()}
+ else if(type=='bokeh')for(let i=0;i<22;i++){const r=40+rnd(i)*90,px=(rnd(i,1)*W+Math.sin(t*.3+i)*40),py=((rnd(i,2)*H-t*(10+rnd(i,3)*20))%(H+200)+H+200)%(H+200)-100,rg=x.createRadialGradient(px,py,0,px,py,r);rg.addColorStop(0,`rgba(255,200,230,${.35+rnd(i,4)*.2})`);rg.addColorStop(1,'rgba(255,200,230,0)');x.fillStyle=rg;x.beginPath();x.arc(px,py,r,0,7);x.fill()}
+ else if(type=='neon'){for(let k=0;k<4;k++){x.strokeStyle=`hsla(${300+k*25+t*20},100%,65%,.55)`;x.lineWidth=6;x.shadowColor=x.strokeStyle;x.shadowBlur=20;x.beginPath();for(let px=0;px<=W;px+=20){const y=H*(.3+k*.12)+Math.sin(px*.008+t*(1+k*.4)+k)*60;px?x.lineTo(px,y):x.moveTo(px,y)}x.stroke()}x.shadowBlur=0}
+ else if(type=='stars'){for(let i=0;i<90;i++){x.fillStyle=`rgba(255,255,255,${.3+.7*Math.abs(Math.sin(t*(.6+rnd(i)*1.5)+i))})`;x.fillRect(rnd(i,1)*W,rnd(i,2)*H*.85,1+rnd(i,3)*2.2,1+rnd(i,3)*2.2)}const s=(t%7)/1.2;if(s<1){x.strokeStyle='rgba(255,255,255,.8)';x.lineWidth=2;x.beginPath();x.moveTo(W*(.9-s*.5),H*(.1+s*.25));x.lineTo(W*(.9-s*.5)+60,H*(.1+s*.25)-30);x.stroke()}}
+ else if(type=='sunset'){x.fillStyle='rgba(255,230,160,.9)';x.beginPath();x.arc(W/2,H*.52,W*.22,0,7);x.fill();x.fillStyle=c2;x.fillRect(0,H*.52,W,H*.48);const gr=x.createLinearGradient(0,H*.52,0,H);gr.addColorStop(0,'rgba(0,0,0,.1)');gr.addColorStop(1,'rgba(0,0,0,.55)');x.fillStyle=gr;x.fillRect(0,H*.52,W,H*.48);x.strokeStyle='rgba(255,255,255,.25)';x.lineWidth=2;for(let i=-8;i<=8;i++){x.beginPath();x.moveTo(W/2,H*.52);x.lineTo(W/2+i*W*.25,H);x.stroke()}for(let i=0;i<8;i++){const y=H*.52+((i+t*.4)%8)/8*H*.48,yy=H*.52+Math.pow((y-H*.52)/(H*.48),2)*H*.48;x.beginPath();x.moveTo(0,yy);x.lineTo(W,yy);x.stroke()}}
+ else if(type=='fog')for(let i=0;i<7;i++){const px=((rnd(i)*W*1.5+t*(8+i*3))%(W*1.6))-W*.3,py=H*(.3+rnd(i,1)*.6),rg=x.createRadialGradient(px,py,0,px,py,W*.6);rg.addColorStop(0,'rgba(200,200,220,.14)');rg.addColorStop(1,'rgba(200,200,220,0)');x.fillStyle=rg;x.fillRect(0,0,W,H)}
+ else if(type=='pastel')for(let i=0;i<5;i++){const px=W*(.5+.45*Math.sin(t*.25+i*1.7)),py=H*(.5+.4*Math.cos(t*.2+i*2.3)),rg=x.createRadialGradient(px,py,0,px,py,W*.7);rg.addColorStop(0,`hsla(${260+i*30},90%,80%,.55)`);rg.addColorStop(1,'transparent');x.fillStyle=rg;x.fillRect(0,0,W,H)}
+ else if(type=='petals'){x.fillStyle='rgba(255,180,210,.6)';for(let i=0;i<30;i++){const px=rnd(i)*W+Math.sin(t+i)*30,py=((t*(40+rnd(i,1)*50)+rnd(i,2)*H)%(H+60))-30;x.save();x.translate(px,py);x.rotate(t+i);x.beginPath();x.ellipse(0,0,8,14,0,0,7);x.fill();x.restore()}}}
+/* ---- media backdrop (moodboard) ---- */
+function load(m){if(m.el)return;if(m.type=='image'){const i=new Image();i.src=m.src;m.el=i}else{const v=document.createElement('video');v.muted=true;v.loop=true;v.playsInline=true;v.src=m.src;m.el=v}}
+const ok=e=>e&&(e.videoWidth||e.naturalWidth);
+function drawMedia(m,W,H,k,a){load(m);if(!ok(m.el))return false;const e=m.el,iw=e.videoWidth||e.naturalWidth,ih=e.videoHeight||e.naturalHeight,r=Math.max(W/iw,H/ih)*k;x.save();x.globalAlpha=a;x.filter=[S.blur?`blur(${S.blur}px)`:'',FIL[T().fl]!='none'?FIL[T().fl]:''].filter(Boolean).join(' ')||'none';x.drawImage(e,(W-iw*r)/2,(H-ih*r)/2,iw*r,ih*r);x.restore();return true}
+/* ---- lyric text ---- */
+function wrapW(txt,mw){const o=[];let l='';txt.split(' ').forEach(w=>{const q=l?l+' '+w:w;if(x.measureText(q).width>mw&&l){o.push(l);l=w}else l=q});o.push(l);return o}
+function ease(v){return 1-Math.pow(1-clamp(v,0,1),3)}
+function lyricLine(text,p,lt,dur,W,H,yc,alpha,main,pulse){const tp=T(),an=S.an||tp.an,fam=S.fnt||tp.f;text=(tp.cs=='upper'?text.toUpperCase():tp.cs=='lower'?text.toLowerCase():text);let fs=S.size*(main?1:.62)*W/720;x.font=FONT[fam](fs);let L=wrapW(text,W*.82);while(L.length>4&&fs>24){fs*=.88;x.font=FONT[fam](fs);L=wrapW(text,W*.82)}
+ const lh=fs*1.25,inT=ease(lt/.4),outT=clamp((dur-lt)/.3,0,1),al=main?alpha*Math.min(inT,outT):alpha;x.save();x.globalAlpha=al;x.textAlign='left';
+ let dy=0,sc=1,dx=0,blur=0;if(main){if(an=='rise')dy=(1-inT)*40;else if(an=='slide')dx=(1-inT)*W*.35;else if(an=='blur')blur=(1-inT)*10;else if(an=='bounce'){const k=clamp(lt/.35,0,1);sc=k<1?.6+.4*(1-Math.pow(1-k,3))+Math.sin(k*Math.PI)*.25:1}sc*=1+pulse}
+ x.translate(W/2+dx,yc+dy);x.scale(sc,sc);if(blur>.5)x.filter=`blur(${blur}px)`;if(tp.glow&&main){x.shadowColor=tp.c[3];x.shadowBlur=24}
+ const chars=text.length,reveal=an=='type'&&main?clamp(lt/(dur*.65),0,1):1;let ci=0;
+ L.forEach((ln,i)=>{const ws=ln.split(' '),gap=x.measureText(' ').width,wd=ws.map(w=>x.measureText(w).width),tw=wd.reduce((a,b)=>a+b,0)+gap*(ws.length-1);let px=-tw/2;const y=(i-(L.length-1)/2)*lh;
+  ws.forEach((w,k)=>{const frac=ci/chars;let col=tp.c[2];if(main&&S.karaoke&&p>=frac*.92)col=tp.c[3];let s=w;if(an=='type'&&main){const vis=Math.floor(reveal*chars)-ci;s=vis<=0?'':w.slice(0,Math.max(0,vis))}
+   if(an=='glitch'&&main&&lt<.25){x.fillStyle='rgba(255,0,80,.7)';x.fillText(s,px-6,y);x.fillStyle='rgba(0,220,255,.7)';x.fillText(s,px+6,y)}
+   x.lineWidth=fs*.12;x.lineJoin='round';x.strokeStyle='rgba(0,0,0,.45)';x.strokeText(s,px,y);x.fillStyle=col;x.fillText(s,px,y);px+=wd[k]+gap;ci+=w.length+1})});x.restore();return L.length*lh}
+function frame(t){const W=720,H=1280;if(cv.width!=S.res)cv.width=S.res,cv.height=Math.round(S.res*16/9);x.setTransform(cv.width/W,0,0,cv.width/W,0,0);const tp=T(),ph=(t*S.bpm/60)%1,pulse=tp.pu*.045*Math.exp(-ph*6);
+ bgDraw(t,W,H,tp.c[0],tp.c[1],S.bg||tp.bg);
+ if(S.media.length){const i=Math.floor(t/S.swap)%S.media.length,lt=t%S.swap,m=S.media[i];S.media.forEach(z=>{if(z!==m&&z.el&&z.el.pause)z.el.pause()});if(m.type=='video'&&ok(m.el)&&m.el.paused&&playing)m.el.play().catch(()=>{});const a=clamp(lt/.4,0,1),pm=S.media[(i+S.media.length-1)%S.media.length];if(S.media.length>1&&a<1)drawMedia(pm,W,H,1.08+pulse,1);drawMedia(m,W,H,1.04+.05*lt/S.swap+pulse,S.media.length>1?a:1)}
+ const dim=S.dim!=null?S.dim:tp.dim;x.fillStyle=`rgba(0,0,0,${dim+(S.media.length?.15:0)})`;x.fillRect(0,0,W,H);
+ const L=lines();if(L.length){let i=L.reduce((a,l,k)=>t>=l.t?k:a,-1);const yc=H*S.pos;
+  if(i>=0){const lt=t-L[i].t,d=Math.max(.5,tEnd(L,i)-L[i].t),p=lt/d,bh=lyricLine(L[i].text,p,lt,d,W,H,yc,1,true,pulse);if(S.ctx){if(L[i-1])lyricLine(L[i-1].text,1,9,9,W,H,yc-bh/2-S.size*.8,.3,false,0);if(L[i+1])lyricLine(L[i+1].text,0,9,9,W,H,yc+bh/2+S.size*.8,.3,false,0)}}
+  else if(L[0])lyricLine(L[0].text,0,9,9,W,H,yc,.3,false,0)}
+ if(tp.grain){x.fillStyle='rgba(255,255,255,.12)';for(let k=0;k<260;k++)x.fillRect(Math.random()*W,Math.random()*H,2,2)}
+ const v=x.createRadialGradient(W/2,H/2,H*.3,W/2,H/2,H*.66);v.addColorStop(0,'transparent');v.addColorStop(1,'rgba(0,0,0,.5)');x.fillStyle=v;x.fillRect(0,0,W,H);
+ if(S.credit){x.font='600 26px system-ui,sans-serif';x.textAlign='center';x.fillStyle='rgba(255,255,255,.75)';x.fillText('♪ '+S.credit,W/2,H*.86)}
+ x.fillStyle=tp.c[3];x.globalAlpha=.9;x.fillRect(0,0,W*clamp(t/S.len,0,1),5);x.globalAlpha=1;
+ if(syncing&&!exporting){x.fillStyle='rgba(0,0,0,.6)';x.fillRect(0,0,W,90);x.fillStyle='#fff';x.font='700 28px system-ui';x.textAlign='center';const nl=lines()[sidx];x.fillText(nl?`Tap when line ${sidx+1} starts`:'Done',W/2,56)}
+ if(S.guide&&!exporting){x.strokeStyle='rgba(255,255,255,.3)';x.setLineDash([10,10]);x.lineWidth=3;x.strokeRect(W*.06,H*.1,W*.74,H*.68);x.setLineDash([])}}
+/* ---- audio ---- */
+function audio(){if(ac)return;ac=new(window.AudioContext||window.webkitAudioContext)();master=ac.createGain();rd=ac.createMediaStreamDestination();master.connect(ac.destination);master.connect(rd)}
+function setSong(f){audio();if(au)au.pause();au=new Audio(URL.createObjectURL(f));au.preload='auto';ac.createMediaElementSource(au).connect(master);au.onloadedmetadata=()=>{adur=au.duration;S.start=0;toast('Song loaded: '+adur.toFixed(0)+'s. Pick the part you want.');draw()}}
+function startAudio(){if(!au)return;ac.resume();au.currentTime=S.start+tNow;au.play().catch(()=>{});const n=ac.currentTime,rem=Math.max(.1,S.len-tNow);master.gain.cancelScheduledValues(n);master.gain.setValueAtTime(1,n);master.gain.setValueAtTime(1,n+Math.max(0,rem-1));master.gain.linearRampToValueAtTime(0,n+rem)}
+function play(){if(tNow>=S.len-.05)tNow=0;audio();ac.resume();playing=true;t0=performance.now()-tNow*1000;startAudio();$('#play').textContent='Stop'}
+function stop(){playing=false;if(au)au.pause();if(master){master.gain.cancelScheduledValues(ac.currentTime);master.gain.setValueAtTime(1,ac.currentTime)}S.media.forEach(z=>z.el&&z.el.pause&&z.el.pause());$('#play').textContent='Play';if(syncing)endSync()}
+$('#play').onclick=()=>playing?stop():play();$('#seek').oninput=e=>{stop();tNow=e.target.value/1000*S.len};
+function loop(){if(playing){tNow=(performance.now()-t0)/1000;if(tNow>=S.len){tNow=S.len;stop();if(exporting)setTimeout(()=>mr&&mr.state=='recording'&&mr.stop(),400)}else $('#seek').value=tNow/S.len*1000}frame(Math.min(tNow,S.len));const f=v=>Math.floor(v/60)+':'+String(Math.floor(v%60)).padStart(2,'0');$('#tm').textContent=f(tNow)+' / '+f(S.len);requestAnimationFrame(loop)}
+/* ---- tap sync ---- */
+function startSync(){const L=lines();if(!L.length)return toast('Paste lyrics first');S.times=[];sidx=0;syncing=true;tNow=0;$('#tap').style.display='block';play();toast('Tap each time a new line starts')}
+function tap(){if(!syncing)return;const L=lines();if(sidx<L.length){S.times[sidx]=+tNow.toFixed(2);sidx++}if(sidx>=L.length)stop()}
+function endSync(){syncing=false;$('#tap').style.display='none';S.times=S.times.filter(v=>v!=null);save();draw();toast('Timings saved. Fine tune them below.')}
+$('#tap').onpointerdown=e=>{e.preventDefault();tap()};cv.onpointerdown=()=>tap();
+addEventListener('keydown',e=>{if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName))return;if(e.code=='Space'){e.preventDefault();syncing?tap():$('#play').click()}});
+/* ---- export ---- */
+$('#exp').onclick=()=>{if(!lines().length)return toast('Paste lyrics first');audio();const mime=['video/mp4;codecs=avc1,mp4a.40.2','video/webm;codecs=vp9,opus','video/webm'].find(m=>window.MediaRecorder&&MediaRecorder.isTypeSupported(m));if(!mime)return toast('This browser cannot record video. Try Chrome, Edge or Safari 15+.');
+ const st=cv.captureStream(30);if(!S.mute)rd.stream.getAudioTracks().forEach(t=>st.addTrack(t));const ch=[];mr=new MediaRecorder(st,{mimeType:mime,videoBitsPerSecond:8e6});mr.ondataavailable=e=>e.data.size&&ch.push(e.data);
+ mr.onstop=()=>{exporting=false;lastBlob=new File([new Blob(ch,{type:mime})],'lyric-reel-'+Date.now()+(mime.includes('mp4')?'.mp4':'.webm'),{type:mime.split(';')[0]});$('#exp').textContent='Export';tab='exp';draw();toast('Reel ready')};
+ exporting=true;tNow=0;mr.start(250);play();$('#exp').textContent='Rendering…'};
+/* ---- UI ---- */
+const opt=(a,v)=>a.map(([k,l])=>`<option value="${k}" ${k==v?'selected':''}>${l}</option>`).join('');
+function applyTpl(id){S.tpl=id;S.fnt=S.an=S.bg='';S.dim=null;if(!S.lyr.trim()||confirm('Replace your lyrics with this mood\'s original sample lyrics?')){}save()}
+function draw(){const P=$('#panel');
+ if(tab=='mood'){P.innerHTML='<div class="g">'+TPL.map(t=>`<button class="card ${t.id==S.tpl?'on':''}" data-id="${t.id}" style="background:linear-gradient(135deg,${t.c[0]},${t.c[1]})"><i>${t.m}</i><b>${t.n}</b><small>${t.d}</small></button>`).join('')+'</div><div class="r"><button class="b" id="samp">Load original sample lyrics</button></div><p class="tip">Each mood sets the background, font, animation and colours. Everything can be changed in Style.</p>';
+  P.querySelectorAll('.card').forEach(b=>b.onclick=()=>{S.tpl=b.dataset.id;S.fnt=S.an=S.bg='';S.dim=null;save();draw()});$('#samp').onclick=()=>{S.lyr=T().sm;S.times=[];save();toast('Sample added. Replace it with your own lyrics.')}}
+ else if(tab=='song'){P.innerHTML=`<div class="r"><label class="b p">Choose your song file<input type="file" id="sf" accept="audio/*,video/*" hidden></label></div>${adur?`<label class="l">Start at: ${S.start.toFixed(0)}s (jump to the chorus)</label><input type="range" id="ss" min="0" max="${Math.max(0,Math.floor(adur-5))}" step="1" value="${S.start}"><div class="r"><button class="b" id="pv">Preview from here</button></div>`:''}
+  <label class="l">Reel length: ${S.len}s</label><input type="range" id="sl" min="8" max="60" step="1" value="${S.len}"><label class="l">Tempo (for beat pulse): ${S.bpm} BPM</label><input type="range" id="bp" min="60" max="170" value="${S.bpm}"><div class="r"><button class="b" id="tt">Tap tempo</button></div>
+  <label class="l">Song and artist credit (shown small)</label><input type="text" id="cr" value="${S.credit.replace(/"/g,'&quot;')}" placeholder="Song - Artist"><p class="tip">Best length: 15 to 45 seconds around the chorus. Use music you have the right to use, or export muted and add a licensed sound inside Instagram or TikTok.</p>`;
+  $('#sf').onchange=e=>e.target.files[0]&&setSong(e.target.files[0]);if(adur){$('#ss').oninput=e=>{S.start=+e.target.value;e.target.previousElementSibling.textContent='Start at: '+S.start+'s (jump to the chorus)'};$('#pv').onclick=()=>{stop();tNow=0;play()}}
+  $('#sl').oninput=e=>{S.len=+e.target.value;e.target.previousElementSibling.textContent='Reel length: '+S.len+'s'};$('#bp').oninput=e=>{S.bpm=+e.target.value;e.target.previousElementSibling.textContent='Tempo (for beat pulse): '+S.bpm+' BPM'};$('#cr').oninput=e=>{S.credit=e.target.value;save()};
+  let tp=[];$('#tt').onclick=()=>{const n=performance.now();tp=tp.filter(v=>n-v<2500);tp.push(n);if(tp.length>3){S.bpm=clamp(Math.round(60000/((tp[tp.length-1]-tp[0])/(tp.length-1))),60,170);draw()}}}
+ else if(tab=='lyr'){const L=lines();P.innerHTML=`<label class="l">Paste your lyrics (one line per row). Only use lyrics you are allowed to use.</label><textarea id="ly" rows="6">${S.lyr.replace(/</g,'&lt;')}</textarea>
+  <div class="r"><button class="b p" id="sy">Tap-sync to the song</button><button class="b" id="sp">Spread evenly</button></div><p class="tip">Tap-sync plays your song and you tap each time a new line starts. Then nudge any line below.</p>
+  ${L.map((l,i)=>`<div class="ln"><span>${l.t.toFixed(1)}s</span><span>${l.text.replace(/</g,'&lt;').slice(0,40)}</span><button class="b" data-d="-.1" data-i="${i}">-</button><button class="b" data-d=".1" data-i="${i}">+</button></div>`).join('')}`;
+  $('#ly').oninput=e=>{S.lyr=e.target.value;save()};$('#ly').onchange=()=>draw();$('#sy').onclick=()=>{S.lyr=$('#ly').value;startSync()};$('#sp').onclick=()=>{S.lyr=$('#ly').value;S.times=[];save();draw()};
+  P.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{const L=lines(),i=+b.dataset.i;S.times=L.map(l=>l.t);S.times[i]=+clamp(S.times[i]+ +b.dataset.d,0,S.len).toFixed(2);tNow=S.times[i];save();draw()})}
+ else if(tab=='style'){const tp=T();P.innerHTML=`<label class="l">Font</label><select id="fn">${opt([['','Mood default'],['serif','Soft serif italic'],['impact','Bold impact'],['mono','Typewriter'],['script','Handwritten'],['sans','Clean sans'],['gothic','Gothic serif']],S.fnt)}</select>
+  <label class="l">Animation</label><select id="an">${opt([['','Mood default'],['rise','Rise'],['blur','Blur in'],['bounce','Bounce'],['slide','Slide'],['type','Typewriter'],['glitch','Glitch']],S.an)}</select>
+  <label class="l">Background</label><select id="bg">${opt([['','Mood default'],['rain','Rain'],['bokeh','Bokeh lights'],['neon','Neon waves'],['stars','Night sky'],['sunset','Synth sunset'],['fog','Fog'],['pastel','Pastel glow'],['petals','Falling petals'],['grain','Plain with grain']],S.bg)}</select>
+  <div class="r"><label class="b p">+ Add your own aesthetic photos / videos<input type="file" id="md" accept="image/*,video/*" multiple hidden></label>${S.media.length?`<button class="b" id="mc">Clear (${S.media.length})</button>`:''}</div>
+  <label class="l">Text size: ${S.size}</label><input type="range" id="sz" min="40" max="100" value="${S.size}"><label class="l">Text position</label><select id="ps">${opt([[.34,'Higher'],[.5,'Middle'],[.66,'Lower']],S.pos)}</select>
+  <label class="l">Background darkness (keeps lyrics readable)</label><input type="range" id="dm" min="0" max=".8" step=".05" value="${S.dim!=null?S.dim:tp.dim}"><label class="l">Photo blur: ${S.blur}px</label><input type="range" id="bl" min="0" max="12" value="${S.blur}">
+  ${[['karaoke','Highlight words as they are sung'],['ctx','Show previous and next line faintly'],['guide','Safe-zone guide (preview only)']].map(([k,l])=>`<label class="r"><input type="checkbox" data-k="${k}" ${S[k]?'checked':''}>${l}</label>`).join('')}`;
+  const bind=(i,k,f=v=>v)=>$('#'+i).onchange=e=>{S[k]=f(e.target.value);save()};bind('fn','fnt');bind('an','an');bind('bg','bg');bind('ps','pos',Number);
+  $('#md').onchange=e=>{[...e.target.files].forEach(f=>{if(f.size>300e6)return;S.media.push({type:f.type.startsWith('video')?'video':'image',src:URL.createObjectURL(f),el:null})});draw();toast('Added to your moodboard')};if(S.media.length)$('#mc').onclick=()=>{S.media=[];draw()};
+  $('#sz').oninput=e=>{S.size=+e.target.value;e.target.previousElementSibling.textContent='Text size: '+S.size};$('#dm').oninput=e=>S.dim=+e.target.value;$('#bl').oninput=e=>{S.blur=+e.target.value;e.target.previousElementSibling.textContent='Photo blur: '+S.blur+'px'};
+  P.querySelectorAll('[data-k]').forEach(c=>c.onchange=()=>{S[c.dataset.k]=c.checked?1:0;save()})}
+ else{P.innerHTML=`<h3>Export</h3>${lastBlob?`<video controls playsinline src="${URL.createObjectURL(lastBlob)}" style="width:100%;max-height:300px;background:#000"></video><div class="r"><button class="b p" id="sh">Share</button><button class="b" id="sv">Save to device</button></div>`:'<p class="tip">Press Export (top right) to render your reel.</p>'}
+  <label class="l">Quality</label><select id="rs">${opt([[720,'720p (fast)'],[1080,'1080p (sharper)']],S.res)}</select><label class="r"><input type="checkbox" id="mu" ${S.mute?'checked':''}>Export without audio (add a licensed sound inside Instagram or TikTok)</label>
+  <p class="tip">Export records in real time, so keep the screen on. Instagram suppresses watermarked videos, and this export has no watermark.</p>`;
+  $('#rs').onchange=e=>S.res=+e.target.value;$('#mu').onchange=e=>{S.mute=e.target.checked?1:0;save()};if(lastBlob){$('#sv').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(lastBlob);a.download=lastBlob.name;a.click()};$('#sh').onclick=async()=>{try{if(navigator.canShare&&navigator.canShare({files:[lastBlob]}))await navigator.share({files:[lastBlob],title:'My lyric reel'});else toast('Sharing is not supported here. Use Save.')}catch(e){}}}}
+ document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t==tab))}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;draw()});
+let dp;addEventListener('beforeinstallprompt',e=>{e.preventDefault();dp=e;$('#inst').hidden=false});$('#inst').onclick=async()=>{if(dp){dp.prompt();await dp.userChoice;$('#inst').hidden=true}};
+if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
+if(!S.lyr)S.lyr=T().sm;draw();requestAnimationFrame(loop);
+</script></body></html>
